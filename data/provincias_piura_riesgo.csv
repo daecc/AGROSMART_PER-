@@ -1,0 +1,9 @@
+ubigeo,provincia,valle_principal,cultivo_predominante,superficie_agricola_ha,lluvia_max_historica_mm,pct_area_inundable,perdida_cosecha_nino_pct,deficit_drenaje_pct,infraestructura_defensa_m
+2001,Piura,Bajo Piura / Medio Piura,Arroz y Algodón,45200,680,52.4,44.8,68.0,12500
+2006,Sullana,Valle del Chira,Banano Orgánico y Limón,54800,610,46.2,39.5,58.5,18000
+2004,Morropón,Alto Piura / San Lorenzo,Limón y Mango,38600,790,58.0,51.2,74.0,9200
+2008,Sechura,Desierto de Sechura / La Niña,Arroz y Menestras,19500,540,64.5,48.0,82.0,4500
+2005,Paita,Margen del Chira / Costa,Uva de Mesa y Arroz,16200,390,28.5,22.0,35.0,8000
+2007,Talara,Quebrada Pariñas,Agricultura Estacional,6500,320,21.0,16.5,30.0,5000
+2003,Huancabamba,Sierra Alta / Cuenca Huancabamba,"Café, Papa y Maíz",28400,850,32.0,34.0,60.0,3100
+2002,Ayabaca,Sierra / Cuenca Quiroz,Café y Caña panelera,31000,890,36.5,37.5,62.0,2800

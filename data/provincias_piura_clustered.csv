@@ -1,0 +1,9 @@
+ubigeo,provincia,valle_principal,cultivo_predominante,superficie_agricola_ha,lluvia_max_historica_mm,pct_area_inundable,perdida_cosecha_nino_pct,deficit_drenaje_pct,infraestructura_defensa_m,cluster_id,pca_x,pca_y,nivel_vulnerabilidad,color_alerta
+2001,Piura,Bajo Piura / Medio Piura,Arroz y Algodón,45200,680,52.4,44.8,68.0,12500,1,1.136762775311481,-0.22998207649110064,Vulnerabilidad Extrema (Prioridad 1),#d9534f
+2006,Sullana,Valle del Chira,Banano Orgánico y Limón,54800,610,46.2,39.5,58.5,18000,1,0.21838084146606587,-0.2560004116150735,Vulnerabilidad Extrema (Prioridad 1),#d9534f
+2004,Morropón,Alto Piura / San Lorenzo,Limón y Mango,38600,790,58.0,51.2,74.0,9200,1,2.0498750611218144,-0.002771720611256926,Vulnerabilidad Extrema (Prioridad 1),#d9534f
+2008,Sechura,Desierto de Sechura / La Niña,Arroz y Menestras,19500,540,64.5,48.0,82.0,4500,1,1.9050181901028125,-1.3344601779687226,Vulnerabilidad Extrema (Prioridad 1),#d9534f
+2005,Paita,Margen del Chira / Costa,Uva de Mesa y Arroz,16200,390,28.5,22.0,35.0,8000,0,-2.4384840439314246,-0.41358420549482644,Vulnerabilidad Moderada (Prioridad 3),#5cb85c
+2007,Talara,Quebrada Pariñas,Agricultura Estacional,6500,320,21.0,16.5,30.0,5000,0,-3.2657774812406752,-0.4094829970063215,Vulnerabilidad Moderada (Prioridad 3),#5cb85c
+2003,Huancabamba,Sierra Alta / Cuenca Huancabamba,"Café, Papa y Maíz",28400,850,32.0,34.0,60.0,3100,2,-0.03768590700525997,1.3278689387857692,Vulnerabilidad Alta (Prioridad 2),#f0ad4e
+2002,Ayabaca,Sierra / Cuenca Quiroz,Café y Caña panelera,31000,890,36.5,37.5,62.0,2800,2,0.43191056417518564,1.3184126504015323,Vulnerabilidad Alta (Prioridad 2),#f0ad4e
