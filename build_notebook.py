@@ -46,7 +46,7 @@ def create_notebook():
 1. **Análisis Exploratorio de Datos (EDA):** Inspección de las series históricas reales y correlaciones climáticas.
 2. **Módulo 1 (Supervisado):** Entrenamiento de Random Forest Regressor vs Regresión Lineal para predecir el rendimiento agrícola ($t/ha$).
 3. **Módulo 2 (Series Temporales):** Pronóstico de precios con Gradient Boosting autoregresivo y el ICEN como variable exógena.
-4. **Módulo 3 (Visión Artificial):** Clasificación probabilística de patologías foliares (Tizón bacteriano, Mancha marrón vs Hoja sana).
+4. **Módulo 3 (Visión Artificial):** Clasificador entrenado con fotos reales de campo de arroz (Tizón bacteriano, Mancha marrón vs Hoja sana).
 5. **Módulo 4 (Clustering):** Zonificación de vulnerabilidad de las 8 provincias de Piura con K-Means, Método del Codo y PCA.
 6. **Módulo 5 (NLP):** Resumen extractivo de comunicados oficiales del ENFEN mediante TextRank y TF-IDF.
 7. **Exportación e Integración:** Serialización de modelos (`.pkl`) para ser consumidos por la aplicación interactiva en **Streamlit** (`app.py`).
@@ -241,32 +241,41 @@ plt.tight_layout()
 plt.savefig('../Documentos/graficos_evaluacion/03_pronostico_series_tiempo.png', dpi=300)
 plt.show()
 
-joblib.dump({'model': gbr_model, 'features': feat_ts}, '../models/ts_precio_limon.pkl')
-print("💾 Modelo de Series Temporales guardado en models/ts_precio_limon.pkl")""")
+print("Análisis completado. La exportación se hace en la celda siguiente con src/timeseries.py.")""")
+
+    add_code("""# Exportación con la misma clase que carga app.py (variables idénticas: precio/icen/lluvia lag1..3, mes_sin/cos, icen, anomalia_tsm)
+import sys
+sys.path.append('..')
+from src.timeseries import AgroTimeSeriesForecaster
+metricas_ts = AgroTimeSeriesForecaster().train_models()   # exporta models/ts_precio_limon.pkl y ts_precio_arroz.pkl
+print("💾 Modelos de Series Temporales exportados:", metricas_ts)""")
 
     # =========================================================================
     # PASO 4: MÓDULO 3 VISIÓN ARTIFICIAL
     # =========================================================================
     add_md("""## 4. Módulo 3: Diagnóstico Fitosanitario de Hojas por Computadora (Visión)
 ### Objetivo:
-Identificar si una hoja presenta sanidad o patologías foliares agravadas por el encharcamiento y calor de El Niño (*Xanthomonas oryzae* o *Bipolaris oryzae*).
+Clasificar fotografías de campo de arroz en *Hoja sana*, *Tizón bacteriano (Xanthomonas oryzae)* o *Mancha marrón (Bipolaris oryzae)*.
+
+Se entrena un `HistGradientBoostingClassifier` sobre 123 descriptores de color y textura, con **1 424 fotos reales** del dataset público `girish787/riceLeafDataset` (Hugging Face), tras eliminar duplicados y separar train/test por grupos de casi-duplicados. El desarrollo completo (EDA, comparación de modelos, limitaciones) está en `03_Clasificacion_Imagenes_Patologias_Hojas.ipynb`.
 """)
 
-    add_code("""sample_dir = '../data/sample_leaves'
-sample_images = ['hoja_sana.jpg', 'tizon_bacteriano.jpg', 'mancha_marron.jpg']
+    add_code("""import sys
+sys.path.append('..')
+from sklearn.metrics import ConfusionMatrixDisplay
+from src import vision as V
 
-fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-for idx, img_name in enumerate(sample_images):
-    img_path = os.path.join(sample_dir, img_name)
-    img = Image.open(img_path)
-    axes[idx].imshow(img)
-    axes[idx].set_title(f"Clase: {img_name.replace('.jpg', '').replace('_', ' ').title()}")
-    axes[idx].axis('off')
+clf_vision = V.PlantDiseaseClassifier()
+met_vis = clf_vision.train_model()   # descarga el dataset si falta y exporta models/vision_hojas_arroz.pkl
 
+nombres = [V.CLASES_CORTO[c] for c in V.CLASES_ID]
+fig, ax = plt.subplots(figsize=(6, 5))
+ConfusionMatrixDisplay(np.array(met_vis['matriz_confusion']), display_labels=nombres).plot(ax=ax, cmap='Greens', colorbar=False)
+ax.grid(False)
+ax.set_title(f"Visión - Test: accuracy = {met_vis['accuracy']*100:.1f}% | F1 macro = {met_vis['f1_macro']*100:.1f}%")
 plt.tight_layout()
-plt.savefig('../Documentos/graficos_evaluacion/04_muestras_patologias_hojas.png', dpi=300)
-plt.show()
-print("✅ Banco de muestras foliares cargado correctamente.")""")
+plt.savefig('../Documentos/graficos_evaluacion/06_matriz_confusion_vision.png', dpi=200)
+plt.show()""")
 
     # =========================================================================
     # PASO 5: MÓDULO 4 CLUSTERING
@@ -337,8 +346,12 @@ plt.tight_layout()
 plt.savefig('../Documentos/graficos_evaluacion/05_clustering_provincias_piura.png', dpi=300)
 plt.show()
 
-joblib.dump({'kmeans': kmeans, 'scaler': scaler, 'pca': pca}, '../models/kmeans_provincias.pkl')
-print("💾 Modelo K-Means guardado en models/kmeans_provincias.pkl")""")
+print("Análisis completado. La exportación se hace en la celda siguiente con src/clustering.py.")""")
+
+    add_code("""# Exportación con la misma clase que carga app.py (scaler, kmeans, pca, mapas de riesgo y variables)
+from src.clustering import VulnerabilityClusterer
+_, sil_export = VulnerabilityClusterer().train_clustering()
+print("💾 Modelo K-Means exportado en models/kmeans_provincias.pkl")""")
 
     # =========================================================================
     # PASO 6: MÓDULO 5 NLP
@@ -393,8 +406,9 @@ print(f"\\n✅ Ratio de compresión textual alcanzado: {compresion:.1f}%")""")
     # =========================================================================
     add_md("""## 7. Integración de los Modelos Entrenados en la Aplicación Web (`app.py`)
 Una vez entrenados y validados todos los modelos en este cuaderno, los archivos generados en `models/`:
-* `models/rf_yield_limon.pkl`
-* `models/ts_precio_limon.pkl`
+* `models/rf_yield_limon.pkl` y `models/rf_yield_arroz.pkl`
+* `models/ts_precio_limon.pkl` y `models/ts_precio_arroz.pkl`
+* `models/vision_hojas_arroz.pkl`
 * `models/kmeans_provincias.pkl`
 
 Son cargados directamente por los controladores de backend en `src/` y consumidos en tiempo real por el dashboard interactivo de **Streamlit**:

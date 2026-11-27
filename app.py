@@ -252,18 +252,36 @@ elif opcion == "🍃 3. Diagnóstico Fitosanitario de Hojas (Visión)":
     st.markdown("## 🍃 Módulo 3: Clasificación de Patologías en Hojas")
     st.markdown("Detección de plagas fúngicas y bacterianas proliferadas por el calor y humedad de El Niño.")
 
+    vision_clf = components['vision']
+    if vision_clf.model is None:
+        vision_clf.load_model()
+    m_vis = vision_clf.metrics or {}
+    if m_vis:
+        st.caption(
+            f"Modelo: HistGradientBoosting sobre 123 descriptores de color y textura, entrenado con "
+            f"{m_vis['n_train']} fotos reales de campo de arroz. Evaluación en {m_vis['n_test']} fotos no vistas: "
+            f"accuracy = {m_vis['accuracy']*100:.1f}%, F1 macro = {m_vis['f1_macro']*100:.1f}%."
+        )
+    st.warning(
+        "⚠️ Alcance: el modelo fue entrenado solo con **fotografías de hojas de arroz** (en campo o "
+        "sobre fondo blanco). No es válido para limón ni para dibujos. El tizón bacteriano solo aparece "
+        "en fotos de campo, así que una hoja con tizón fotografiada sobre fondo blanco puede clasificarse mal. "
+        "Fuera de ese alcance el resultado no es confiable aunque la probabilidad mostrada sea alta."
+    )
+
     col_img, col_diag = st.columns([1, 1])
 
     with col_img:
         st.subheader("📸 Imagen de la Hoja a Diagnosticar")
-        modo = st.radio("Método de entrada:", ["Usar Hoja de Muestra de Piura", "Subir mi propia foto"])
-        
+        modo = st.radio("Método de entrada:", ["Usar foto de muestra (conjunto de prueba)", "Subir mi propia foto"])
+
         selected_img = None
-        if modo == "Usar Hoja de Muestra de Piura":
-            muestra = st.selectbox(
-                "Seleccione Muestra Foliares de Campo:",
-                ["hoja_sana.jpg", "tizon_bacteriano.jpg", "mancha_marron.jpg"]
+        if modo == "Usar foto de muestra (conjunto de prueba)":
+            muestras_disp = sorted(
+                f for f in os.listdir(os.path.join("data", "sample_leaves"))
+                if f.lower().endswith(('.jpg', '.jpeg', '.png'))
             )
+            muestra = st.selectbox("Seleccione una foto real de campo (no usada en el entrenamiento):", muestras_disp)
             img_path = os.path.join("data", "sample_leaves", muestra)
             if os.path.exists(img_path):
                 selected_img = Image.open(img_path)
@@ -277,14 +295,16 @@ elif opcion == "🍃 3. Diagnóstico Fitosanitario de Hojas (Visión)":
     with col_diag:
         st.subheader("🔬 Diagnóstico y Recomendación Fitosanitaria")
         if selected_img is not None:
-            res_vis = components['vision'].predict_image(selected_img)
-            
+            res_vis = vision_clf.predict_image(selected_img)
+
             if res_vis['color'] == 'green':
                 st.success(f"### Diagnóstico: {res_vis['clase_detectada']} ({res_vis['confianza_pct']}%)")
             elif res_vis['color'] == 'orange':
                 st.warning(f"### Diagnóstico: {res_vis['clase_detectada']} ({res_vis['confianza_pct']}%)")
             else:
                 st.error(f"### Diagnóstico: {res_vis['clase_detectada']} ({res_vis['confianza_pct']}%)")
+            if res_vis['confianza_baja']:
+                st.warning("Confianza baja: el modelo no distingue con claridad la clase. Se recomienda confirmar con un técnico de SENASA.")
 
             st.write(f"**Severidad:** {res_vis['severidad']}")
             st.write(f"**Descripción Patológica:** {res_vis['diagnostico']}")
@@ -331,11 +351,16 @@ elif opcion == "🗺️ 4. Clustering de Vulnerabilidad Provincial (K-Means)":
             use_container_width=True
         )
 
-        st.markdown("""
+        # Los grupos se arman a partir de la predicción del modelo exportado (models/kmeans_provincias.pkl)
+        def _provs(prefijo):
+            sel = df_cluster[df_cluster['nivel_vulnerabilidad'].str.startswith(prefijo)]['provincia']
+            return ", ".join(sel) if len(sel) else "—"
+
+        st.markdown(f"""
         #### 🏛️ Asignación de Recursos para el GORE Piura y MIDAGRI:
-        - **Grupo Rojo (Morropón, Sechura, Piura):** Prioridad inmediata para traslado de motobombas pesadas de 12 pulgadas y descolmatación de drenes troncales.
-        - **Grupo Naranja (Sullana, Ayabaca, Huancabamba):** Monitoreo continuo de deslizamientos en quebradas y protección del valle de banano orgánico.
-        - **Grupo Verde (Paita, Talara):** Menor anegamiento de tierras de cultivo, habilitación como centros de acopio temporal.
+        - **Grupo Rojo ({_provs('Vulnerabilidad Extrema')}):** Prioridad inmediata para traslado de motobombas pesadas de 12 pulgadas y descolmatación de drenes troncales.
+        - **Grupo Naranja ({_provs('Vulnerabilidad Alta')}):** Monitoreo continuo de deslizamientos en quebradas y vigilancia de las zonas altas de la cuenca.
+        - **Grupo Verde ({_provs('Vulnerabilidad Moderada')}):** Menor anegamiento de tierras de cultivo, habilitación como centros de acopio temporal.
         """)
 
 # ==============================================================================

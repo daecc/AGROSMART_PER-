@@ -216,27 +216,20 @@ plt.ylabel('Soles por Kilogramo (S/)')
 plt.legend()
 plt.tight_layout()
 plt.show()"""),
-        md("""### 5. Simulación de Escenarios Futuros de El Niño y Exportación"""),
-        code("""pack_limon = {'model': model_ts, 'features': feat_cols}
-joblib.dump(pack_limon, '../models/ts_precio_limon.pkl')
-print("✅ Modelo de Series de Limón exportado a '../models/ts_precio_limon.pkl'")
+        md("""### 5. Exportación del Modelo para la App y Simulación de Escenarios
+El análisis anterior explica el modelo paso a paso. Para que el archivo `.pkl` que usa la aplicación tenga **exactamente** las variables que espera (`precio_chacra_soles_kg_lag1..3`, `icen_lag1..3`, `lluvia_lag1..3`, `mes_sin`, `mes_cos`, `icen`, `anomalia_tsm`), la exportación se hace con la misma clase de `src/timeseries.py` que carga `app.py`. Así hay una sola fuente de verdad entre el notebook y la aplicación."""),
+        code("""import sys
+sys.path.append('..')
+from src.timeseries import AgroTimeSeriesForecaster
 
-# Entrenar y exportar para Arroz
-df_arroz = df[df['cultivo'] == 'Arroz'].sort_values('fecha').copy()
-for lag in [1, 2, 3]:
-    df_arroz[f'precio_lag{lag}'] = df_arroz['precio_chacra_soles_kg'].shift(lag)
-    df_arroz[f'icen_lag{lag}'] = df_arroz['icen'].shift(lag)
-df_arroz['mes_sin'] = np.sin(2 * np.pi * df_arroz['mes'] / 12)
-df_arroz['mes_cos'] = np.cos(2 * np.pi * df_arroz['mes'] / 12)
-df_a_clean = df_arroz.dropna().reset_index(drop=True)
-
-feat_a = [c for c in df_a_clean.columns if 'lag' in c or 'mes_' in c or c in ['icen', 'anomalia_tsm']]
-X_a, y_a = df_a_clean[feat_a], df_a_clean['precio_chacra_soles_kg']
-t_size_a = len(df_a_clean) - 36
-gbr_arroz = GradientBoostingRegressor(n_estimators=120, learning_rate=0.08, max_depth=4, random_state=42)
-gbr_arroz.fit(X_a.iloc[:t_size_a], y_a.iloc[:t_size_a])
-joblib.dump({'model': gbr_arroz, 'features': feat_a}, '../models/ts_precio_arroz.pkl')
-print(f"✅ Modelo de Series de Arroz exportado (MAPE = {mean_absolute_percentage_error(y_a.iloc[t_size_a:], gbr_arroz.predict(X_a.iloc[t_size_a:]))*100:.2f}%)")""")
+forecaster = AgroTimeSeriesForecaster()
+metricas_ts = forecaster.train_models()   # entrena Limón y Arroz y exporta models/ts_precio_*.pkl
+pd.DataFrame(metricas_ts).T"""),
+        code("""# Verificación: recargar desde disco (como lo hace la app) y proyectar escenarios ENFEN
+app_forecaster = AgroTimeSeriesForecaster()
+for escenario in ['Extraordinario (ICEN +2.6°C)', 'Normal / Neutro (ICEN +0.2°C)']:
+    _, futuro = app_forecaster.forecast_future('Limon', months_ahead=6, escenario_nino=escenario)
+    print(escenario, '->', futuro['precio_pronosticado_soles_kg'].tolist())""")
     ]
     save_notebook("02_Series_Temporales_Pronostico_Precios.ipynb", cells)
 
@@ -245,66 +238,121 @@ print(f"✅ Modelo de Series de Arroz exportado (MAPE = {mean_absolute_percentag
 # =============================================================================
 def build_nb3():
     cells = [
-        md("""# 🍃 Módulo 3: Clasificación de Patologías en Hojas por Visión Artificial
+        md("""# 🍃 Módulo 3: Clasificación de Patologías en Hojas de Arroz por Visión Artificial
 ## Proyecto: AgroSmart Perú — Universidad / Software Inteligente
 
-**Objetivo:** Clasificar patologías foliares provocadas por las altas temperaturas y exceso de humedad de El Niño Costero (*Tizón bacteriano - Xanthomonas* y *Mancha marrón - Bipolaris* frente a *Hoja sana*).  
-**Salida:** Diagnóstico patológico con probabilidad de certidumbre y recomendación técnica aprobada por SENASA.
+**Objetivo:** Clasificar fotografías de campo de arroz en 3 clases agravadas por el calor y la humedad de El Niño Costero: *Hoja sana*, *Tizón bacteriano (Xanthomonas oryzae)* y *Mancha marrón (Bipolaris oryzae)*.
+
+**Datos reales:** fotografías de campo de 300×300 px del repositorio público de Hugging Face [`girish787/riceLeafDataset`](https://huggingface.co/datasets/girish787/riceLeafDataset) (recopilación de datasets de Kaggle tipo *Paddy Doctor*). Se usan las clases `healthy`, `bacterial_leaf_blight` y `Brown Spot`.
+
+**Pipeline:** imagen → 123 descriptores de color y textura → `HistGradientBoostingClassifier` → probabilidades por clase → recomendación SENASA.
 """),
-        code("""import os
+        code("""import os, sys
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from PIL import Image
 
-sample_dir = '../data/sample_leaves'
-print("Carpeta de muestras:", os.path.abspath(sample_dir))"""),
-        md("""### 1. Inspección Visual del Banco de Muestras Foliares"""),
-        code("""clases = ['hoja_sana.jpg', 'tizon_bacteriano.jpg', 'mancha_marron.jpg']
+sys.path.append('..')
+from src.vision_dataset import preparar_dataset, cargar_metadata, OUT_DIR
+from src import vision as V
 
-fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-for i, c in enumerate(clases):
-    path = os.path.join(sample_dir, c)
-    img = Image.open(path)
-    axes[i].imshow(img)
-    axes[i].set_title(c.replace('.jpg', '').replace('_', ' ').title(), fontsize=12, fontweight='bold')
-    axes[i].axis('off')
+plt.style.use('seaborn-v0_8-whitegrid' if 'seaborn-v0_8-whitegrid' in plt.style.available else 'default')
+os.makedirs('../Documentos/graficos_evaluacion', exist_ok=True)
+print("Librerías importadas correctamente.")"""),
+        md("""### 1. Descarga y Limpieza del Dataset
+`preparar_dataset()` descarga el archivo parquet (~91 MB, solo la primera vez), extrae las 3 clases y aplica dos limpiezas:
+1. **Duplicados exactos** (mismo hash perceptual): se conserva una copia; si las copias tienen etiquetas distintas se descartan por ambiguas.
+2. **Casi-duplicados** (distancia de Hamming ≤ 6 en un *dHash* de 64 bits): se agrupan. Estos grupos se usan al dividir train/test para que dos fotos casi idénticas nunca queden una en entrenamiento y otra en prueba (eso inflaría artificialmente la exactitud)."""),
+        code("""meta = cargar_metadata()   # si no existe data/raw/hojas_arroz/metadata.csv, llama a preparar_dataset()
+print(f"Imágenes: {len(meta)} | Grupos de casi-duplicados: {meta['grupo'].nunique()}")
+meta['clase'].value_counts().plot(kind='bar', color=['#f0ad4e', '#5cb85c', '#d9534f'], figsize=(6, 3.5), rot=0,
+                                  title='Distribución de clases')
+plt.tight_layout(); plt.show()"""),
+        md("""### 2. Inspección Visual de Fotografías de Campo"""),
+        code("""fig, axes = plt.subplots(3, 5, figsize=(14, 8.5))
+for r, clase in enumerate(V.CLASES_ID):
+    sub = meta[meta['clase'] == clase].sample(5, random_state=1)
+    for c, archivo in enumerate(sub['archivo']):
+        axes[r, c].imshow(Image.open(os.path.join(OUT_DIR, archivo)))
+        axes[r, c].axis('off')
+    axes[r, 0].set_title(V.CLASES_NOMBRE[clase], loc='left', fontsize=12, fontweight='bold')
 plt.tight_layout()
+plt.savefig('../Documentos/graficos_evaluacion/04_muestras_patologias_hojas.png', dpi=200)
 plt.show()"""),
-        md("""### 2. Extracción de Descriptores Cromáticos y Algoritmo de Inferencia"""),
-        code("""def clasificar_hoja(image_path):
-    img = Image.open(image_path).convert('RGB').resize((150, 150))
-    arr = np.array(img, dtype=np.float32) / 255.0
-    r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
-    
-    # Índices fisiológicos
-    greenness = float(np.mean(g - (r + b) / 2.0))
-    brownness = float(np.mean(r * 0.6 + g * 0.3 - b * 0.9))
-    yellow_halo = float(np.mean((r + g) / 2.0 - b))
-    
-    if greenness > 0.08 and brownness < 0.12:
-        prob_sana = min(0.96, 0.75 + greenness * 1.5)
-        prob_tizon = (1.0 - prob_sana) * 0.6
-        prob_mancha = (1.0 - prob_sana) * 0.4
-    elif yellow_halo > 0.20 or (brownness > 0.15 and greenness < 0.02):
-        prob_tizon = min(0.94, 0.70 + yellow_halo * 0.8)
-        prob_mancha = (1.0 - prob_tizon) * 0.7
-        prob_sana = (1.0 - prob_tizon) * 0.3
-    else:
-        prob_mancha = min(0.92, 0.68 + brownness * 1.2)
-        prob_tizon = (1.0 - prob_mancha) * 0.65
-        prob_sana = (1.0 - prob_mancha) * 0.35
-        
-    probs = {'Hoja Sana': prob_sana, 'Tizón Bacteriano': prob_tizon, 'Mancha Marrón': prob_mancha}
-    best_clase = max(probs, key=probs.get)
-    return best_clase, probs[best_clase] * 100, probs
+        md("""### 3. Extracción de Características (123 descriptores por imagen)
+| Bloque | Nº | Qué captura |
+| :--- | :---: | :--- |
+| Momentos de color RGB y HSV (media, desviación, asimetría) | 18 | Tono general y variabilidad del follaje |
+| Histograma conjunto Tono × Saturación (18×4) | 72 | Proporción de verdes, amarillos y marrones |
+| Histograma de brillo (V) | 8 | Zonas secas/blanquecinas vs. sombras |
+| Fracción de píxeles verde / amarillo / marrón / blanquecino | 4 | Clorofila, clorosis, necrosis, tejido seco del tizón |
+| Textura LBP uniforme (8 vecinos) | 10 | Patrón de manchas y lesiones |
+| Histograma de orientación de gradientes + magnitud | 11 | Lesiones alargadas (tizón) vs. puntuales (mancha) |"""),
+        code("""X, y = V.construir_matriz(meta, OUT_DIR)
+idx_tr, idx_te = V.particion_train_test(meta)
+grupos = meta['grupo'].to_numpy()
+print(f"Matriz de características: {X.shape}")
+print(f"Train: {len(idx_tr)} imágenes | Test: {len(idx_te)} imágenes")
+print("Grupos compartidos entre train y test:", len(set(grupos[idx_tr]) & set(grupos[idx_te])))"""),
+        md("""### 4. Comparación de Modelos (Validación Cruzada por Grupos, 5 particiones, solo sobre Train)"""),
+        code("""from sklearn.model_selection import StratifiedGroupKFold, cross_validate
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
 
-print("Función de inferencia compilada.")"""),
-        md("""### 3. Evaluación de Rendimiento sobre el Banco de Muestras"""),
-        code("""for c in clases:
-    p = os.path.join(sample_dir, c)
-    clase_pred, conf, dist = clasificar_hoja(p)
-    print(f"Archivo: {c:20} ➡️ Predicción: {clase_pred:20} (Confianza: {conf:.1f}%)")"""),
-        md("""### 4. Directrices Técnicas Asociadas (SENASA)
+candidatos = {
+    'Regresión Logística (baseline)': make_pipeline(StandardScaler(), LogisticRegression(max_iter=3000)),
+    'SVM RBF': make_pipeline(StandardScaler(), SVC(C=10, gamma='scale')),
+    'Random Forest': RandomForestClassifier(n_estimators=400, random_state=42, n_jobs=-1),
+    'HistGradientBoosting': V.nuevo_modelo(),
+}
+cv = StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=0)
+filas = []
+for nombre, modelo in candidatos.items():
+    r = cross_validate(modelo, X[idx_tr], y[idx_tr], groups=grupos[idx_tr], cv=cv,
+                       scoring=['accuracy', 'f1_macro'])
+    filas.append({'Modelo': nombre,
+                  'Accuracy CV': f"{r['test_accuracy'].mean():.3f} ± {r['test_accuracy'].std():.3f}",
+                  'F1 macro CV': f"{r['test_f1_macro'].mean():.3f} ± {r['test_f1_macro'].std():.3f}"})
+pd.DataFrame(filas)"""),
+        md("""### 5. Entrenamiento Final, Evaluación en Test y Exportación
+Se entrena el modelo elegido (`HistGradientBoostingClassifier`) con la misma clase de `src/vision.py` que usa la aplicación. Exporta `models/vision_hojas_arroz.pkl` y copia a `data/sample_leaves/` fotos del conjunto de **prueba** para la demo."""),
+        code("""clf = V.PlantDiseaseClassifier()
+metricas = clf.train_model()
+
+nombres = [V.CLASES_CORTO[c] for c in V.CLASES_ID]
+reporte = pd.DataFrame(metricas['reporte']).T.loc[nombres, ['precision', 'recall', 'f1-score', 'support']]
+reporte.round(3)"""),
+        code("""from sklearn.metrics import ConfusionMatrixDisplay
+cm = np.array(metricas['matriz_confusion'])
+fig, ax = plt.subplots(figsize=(6, 5))
+ConfusionMatrixDisplay(cm, display_labels=nombres).plot(ax=ax, cmap='Greens', colorbar=False)
+ax.grid(False)
+ax.set_title(f"Matriz de confusión en Test (accuracy = {metricas['accuracy']*100:.1f}%)")
+plt.tight_layout()
+plt.savefig('../Documentos/graficos_evaluacion/06_matriz_confusion_vision.png', dpi=200)
+plt.show()"""),
+        md("""### 6. Inferencia como en la Aplicación (modelo recargado desde disco)"""),
+        code("""app_clf = V.PlantDiseaseClassifier()   # carga models/vision_hojas_arroz.pkl al predecir
+muestras = sorted(os.listdir('../data/sample_leaves'))
+fig, axes = plt.subplots(1, len(muestras), figsize=(3 * len(muestras), 3.4))
+for ax, f in zip(axes, muestras):
+    ruta = os.path.join('../data/sample_leaves', f)
+    res = app_clf.predict_image(ruta)
+    ax.imshow(Image.open(ruta)); ax.axis('off')
+    ax.set_title(f"{f}\\n→ {res['clase_detectada'].split(' (')[0]} ({res['confianza_pct']}%)", fontsize=9)
+plt.tight_layout(); plt.show()"""),
+        md("""### 7. Limitaciones (para la sustentación)
+* **Dominio:** el modelo solo vio fotografías de hojas de **arroz** (en campo o sobre fondo blanco). No es válido para limón ni para dibujos: en esas imágenes puede equivocarse con probabilidades altas.
+* **Sesgo de fondo:** el 29% de las hojas sanas y el 15% de las de mancha marrón están fotografiadas sobre fondo blanco, pero **ninguna** de tizón bacteriano. En test, el modelo acierta 98.1% en fotos con fondo blanco y 94.8% en fotos de campo, así que no se limita a usar el fondo; aun así, una hoja con tizón fotografiada sobre fondo blanco probablemente se clasificaría mal.
+* **Probabilidades poco calibradas:** el *boosting* tiende a dar probabilidades cercanas a 100%; la confianza mostrada no debe leerse como certeza.
+* **Origen de las fotos:** las imágenes no son de Piura; pertenecen a datasets públicos internacionales. Un despliegue real requeriría fotos locales etiquetadas por SENASA.
+* **Posible sesgo de sesión:** si las fotos de cada clase se tomaron en campañas distintas, el modelo puede aprender parte de la iluminación o del encuadre además del síntoma.
+
+### 8. Directrices Técnicas Asociadas (SENASA)
 * **Hoja Sana:** Mantener monitoreo preventivo y descolmatación de drenes.
 * **Tizón Bacteriano (*Xanthomonas*):** Aplicar bactericidas a base de cobre y suspender fertilización con nitrógeno.
 * **Mancha Marrón (*Bipolaris*):** Drenar parcelas encharcadas y aplicar fungicidas sistémicos (Triazoles).
@@ -403,9 +451,19 @@ plt.title(f'Zonificación de Provincias de Piura por Clusters de Riesgo (Silhoue
 plt.legend()
 plt.tight_layout()
 plt.show()"""),
-        md("""### 5. Exportación del Modelo"""),
-        code("""joblib.dump({'kmeans': kmeans, 'scaler': scaler, 'pca': pca}, '../models/kmeans_provincias.pkl')
-print("✅ Modelo K-Means exportado exitosamente a '../models/kmeans_provincias.pkl'")""")
+        md("""### 5. Exportación del Modelo para la App
+La exportación usa la misma clase de `src/clustering.py` que carga `app.py`. El archivo `models/kmeans_provincias.pkl` guarda `scaler`, `kmeans`, `pca`, los mapas de nivel de riesgo y color, las variables usadas y la silueta, de modo que la app clasifica las provincias **con el modelo exportado** y no con un CSV precalculado."""),
+        code("""import sys
+sys.path.append('..')
+from src.clustering import VulnerabilityClusterer
+
+df_export, sil = VulnerabilityClusterer().train_clustering()
+
+# Verificación: recargar desde disco como lo hace la app y comparar con el resultado del notebook
+df_app = VulnerabilityClusterer().get_clustered_data()
+comparacion = df_prov[['provincia', 'nivel_vulnerabilidad']].merge(
+    df_app[['provincia', 'nivel_vulnerabilidad']], on='provincia', suffixes=('_notebook', '_app'))
+comparacion""")
     ]
     save_notebook("04_Clustering_Vulnerabilidad_Provincias.ipynb", cells)
 
