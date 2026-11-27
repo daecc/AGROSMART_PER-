@@ -85,9 +85,22 @@ El ciclo de desarrollo de IA se encuentra completamente documentado y reproducib
   * **Arroz Cáscara:** MAPE $= 5.00\%$, $\text{RMSE} = \text{S/ } 0.12\text{ / kg}$.
 
 ### 3.3. Módulo 3: Visión por Computadora (Diagnóstico Fitosanitario)
-* **Problema:** Clasificación probabilística de imágenes foliares en 3 clases: *Hoja Sana*, *Tizón Bacteriano (Xanthomonas)* y *Mancha Marrón (Bipolaris)*.
-* **Extracción de Características:** Descriptores cromáticos en el espacio RGB/HSV normalizado y gradientes de densidad de necrosis.
-* **Desempeño:** Certeza diagnóstica superior al 88% en muestras de campo, con derivación automática de acciones de manejo aprobadas por SENASA.
+* **Problema:** Clasificación supervisada de fotografías de campo de arroz en 3 clases: *Hoja Sana*, *Tizón Bacteriano (Xanthomonas oryzae)* y *Mancha Marrón (Bipolaris oryzae)*.
+* **Datos reales:** 1 424 fotografías de campo (300×300 px) del repositorio público de Hugging Face `girish787/riceLeafDataset` (recopilación de datasets de Kaggle tipo *Paddy Doctor*): 488 hojas sanas, 353 con tizón bacteriano y 583 con mancha marrón. Se eliminaron 127 duplicados exactos y 10 imágenes con etiqueta contradictoria (`src/vision_dataset.py`).
+* **Partición sin fuga de información:** los casi-duplicados (hash perceptual dHash, distancia de Hamming ≤ 6) se agrupan y la división 80/20 se hace con `StratifiedGroupKFold`, de modo que dos fotos casi idénticas nunca quedan una en entrenamiento y otra en prueba.
+* **Extracción de Características:** 123 descriptores por imagen: momentos de color RGB/HSV, histograma conjunto Tono×Saturación, histograma de brillo, fracción de píxeles verdes/amarillos/marrones/blanquecinos, textura LBP y orientación de gradientes.
+* **Modelos comparados (validación cruzada por grupos de 5 particiones sobre el conjunto de entrenamiento):**
+
+| Modelo | Accuracy CV | F1 macro CV |
+| :--- | :---: | :---: |
+| Regresión Logística (Baseline) | 0.790 ± 0.022 | 0.784 ± 0.023 |
+| SVM RBF | 0.865 ± 0.022 | 0.861 ± 0.025 |
+| Random Forest | 0.898 ± 0.029 | 0.897 ± 0.030 |
+| **HistGradientBoosting** | **0.911 ± 0.031** | **0.909 ± 0.033** |
+
+* **Desempeño del modelo final en el conjunto de prueba (285 fotos no vistas):** accuracy = **0.954**, F1 macro = **0.955** (Hoja Sana F1 0.944 · Tizón Bacteriano F1 0.964 · Mancha Marrón F1 0.957). La matriz de confusión se encuentra en `Documentos/graficos_evaluacion/06_matriz_confusion_vision.png`. El valor de validación cruzada (≈ 0.91) es la estimación más prudente del desempeño esperado.
+* **Modelo exportado:** `models/vision_hojas_arroz.pkl`.
+* **Limitaciones:** el modelo solo es válido para fotografías de hojas de arroz (no para limón). El 29% de las hojas sanas y el 15% de las de mancha marrón están fotografiadas sobre fondo blanco, pero ninguna de tizón bacteriano. En test, el modelo acierta 98.1% con fondo blanco y 94.8% en campo, por lo que no depende solo del fondo, pero una hoja con tizón sobre fondo blanco probablemente se clasificaría mal. Sus probabilidades tienden a ser muy altas y no deben leerse como certeza; las fotos no provienen de Piura, por lo que un despliegue real requeriría imágenes locales etiquetadas por SENASA.
 
 ### 3.4. Módulo 4: Clustering de Vulnerabilidad Provincial (No Supervisado)
 * **Problema:** Segmentación territorial de las 8 provincias de Piura.
@@ -95,8 +108,8 @@ El ciclo de desarrollo de IA se encuentra completamente documentado y reproducib
   * Método del Codo (*Inertia*): Se observa la flexión de la curva en $k=3$.
   * Coeficiente de Silueta: **0.543** (máxima cohesión intra-cluster y separación inter-cluster).
 * **Resultados del Clustering K-Means:**
-  * **Cluster Rojo (Vulnerabilidad Extrema):** Morropón, Sechura y Piura (pérdidas $>44\%$, alto déficit de drenaje).
-  * **Cluster Naranja (Vulnerabilidad Alta):** Sullana, Ayabaca y Huancabamba.
+  * **Cluster Rojo (Vulnerabilidad Extrema):** Morropón, Sechura, Piura y Sullana (pérdidas entre 39.5% y 51.2%, alto déficit de drenaje).
+  * **Cluster Naranja (Vulnerabilidad Alta):** Ayabaca y Huancabamba (sierra: lluvias extremas, menor área inundable).
   * **Cluster Verde (Vulnerabilidad Moderada):** Paita y Talara.
 
 ### 3.5. Módulo 5: Resumen Inteligente de Comunicados Oficiales (NLP)
@@ -115,7 +128,7 @@ Cuaderno Jupyter / Colab
           │
           ▼  joblib.dump()
 Carpeta models/
-(rf_yield.pkl, ts_precio.pkl, kmeans_provincias.pkl)
+(rf_yield_*.pkl, ts_precio_*.pkl, vision_hojas_arroz.pkl, kmeans_provincias.pkl)
           │
           ▼  joblib.load()
 Capa Backend (src/*.py)
@@ -125,6 +138,8 @@ Capa Backend (src/*.py)
 Interfaz Web Streamlit (app.py)
 (Dashboard interactivo para el usuario final)
 ```
+
+**Una sola fuente de verdad:** los cuadernos exportan los modelos llamando a las mismas clases de `src/` que usa `app.py` (`AgroTimeSeriesForecaster.train_models()`, `PlantDiseaseClassifier.train_model()`, `VulnerabilityClusterer.train_clustering()`), de modo que cada `.pkl` tiene exactamente el formato y las variables que espera la aplicación. Al cargar, cada módulo valida el archivo (versión de características, variables o claves esperadas) y, si es incompatible o está corrupto, reentrena y lo vuelve a exportar en lugar de fallar. Los modelos se exportaron con `scikit-learn 1.9.1`, versión fijada en `requirements.txt`.
 
 ---
 

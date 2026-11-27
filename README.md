@@ -53,7 +53,7 @@ El software adopta una **Arquitectura Modular en Capas (Layered Architecture)**:
 │                  CAPA DE MODELOS DE INFERENCIA                  │
 │   • Random Forest Regressor (R² = 0.959 en Limón, 0.938 Arroz)  │
 │   • Gradient Boosting Time Series Forecaster (MAPE = 8.11%)     │
-│   • Color/Texture Foliar Pattern Classifier (>88% certidumbre)  │
+│   • HistGradientBoosting Visión (fotos reales, Accuracy 0.954)  │
 │   • K-Means Clustering + PCA (Silhouette Score = 0.543)         │
 │   • TextRank Graph Algorithm + TF-IDF (Compresión 76.4%)        │
 └────────────────────────────────┬────────────────────────────────┘
@@ -62,7 +62,7 @@ El software adopta una **Arquitectura Modular en Capas (Layered Architecture)**:
 │                  CAPA DE DATOS LOCAL Y REPRODUCIBLE             │
 │   • data/tabla_maestra_agro_nino.csv (474 registros mensuales)  │
 │   • data/provincias_piura_riesgo.csv (8 provincias de Piura)    │
-│   • data/sample_leaves/ (Muestras de hojas sanas e infectadas)  │
+│   • data/raw/hojas_arroz/ (1 424 fotos reales de hojas de arroz)│
 │   • data/comunicados_enfen/ (Boletines oficiales en texto)      │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -159,15 +159,15 @@ Cada módulo cuenta con su propio cuaderno de entrenamiento individual en `noteb
 ### 🍃 Módulo 3: Diagnóstico Fitosanitario de Hojas (Visión por Computadora)
 * **Cuaderno:** [`notebooks/03_Clasificacion_Imagenes_Patologias_Hojas.ipynb`](notebooks/03_Clasificacion_Imagenes_Patologias_Hojas.ipynb)
 * **Controlador:** `src/vision.py`
+* **Dataset:** `src/vision_dataset.py`
 * **Paso a paso:**
-  1. Recibe una imagen foliar tomada en campo o de muestra (`data/sample_leaves/`).
-  2. Redimensiona a $150 \times 150$ píxeles y descompone en canales RGB y HSV.
-  3. Extrae índices cromáticos fisiológicos: verdor de clorofila frente a halo amarillento y densidad de necrosis marrón.
-  4. Clasifica probabilísticamente entre:
-     * **Hoja Sana:** Tejido vigoroso ($>88\%$ certeza).
-     * **Tizón Bacteriano (*Xanthomonas oryzae*):** Lesiones lineales acuosas por lluvias.
-     * **Mancha Marrón (*Bipolaris oryzae*):** Manchas necróticas circulares por anegamiento.
-  5. Despliega en pantalla el diagnóstico y la acción fitosanitaria oficial aprobada por **SENASA**.
+  1. Descarga 1 424 fotografías **reales** de hojas de arroz (Hugging Face `girish787/riceLeafDataset`): 488 sanas, 353 con tizón bacteriano y 583 con mancha marrón. Elimina duplicados exactos y agrupa casi-duplicados (hash perceptual) para evitar fuga de información.
+  2. Redimensiona cada foto a $128 \times 128$ píxeles y extrae **123 descriptores**: momentos de color RGB/HSV, histograma Tono×Saturación, fracción de píxeles verdes/amarillos/marrones/blanquecinos, textura LBP y orientación de gradientes.
+  3. Compara Regresión Logística, SVM, Random Forest y **HistGradientBoosting** con validación cruzada por grupos (mejor: HistGradientBoosting, accuracy CV $0.911 \pm 0.031$).
+  4. Evalúa el modelo final en 285 fotos no vistas: **accuracy $0.954$, F1 macro $0.955$** (matriz de confusión en `Documentos/graficos_evaluacion/06_matriz_confusion_vision.png`).
+  5. Exporta `models/vision_hojas_arroz.pkl` y copia 6 fotos del conjunto de prueba a `data/sample_leaves/` para la demo.
+  6. En la app, despliega el diagnóstico, las probabilidades por clase y la acción fitosanitaria oficial aprobada por **SENASA**.
+* **Limitación:** válido solo para fotografías de hojas de **arroz** (no limón). El tizón bacteriano solo aparece en fotos de campo, nunca sobre fondo blanco, así que en ese caso el diagnóstico es menos confiable.
 
 ---
 
@@ -182,10 +182,10 @@ Cada módulo cuenta con su propio cuaderno de entrenamiento individual en `noteb
      * Análisis de Silueta: alcanza su máximo en **$0.543$** con $k=3$.
   4. Entrena el algoritmo **K-Means** y aplica **PCA (Análisis de Componentes Principales)** a 2 dimensiones para graficar.
   5. **Segmentación territorial obtenida:**
-     * **Rojo (Vulnerabilidad Extrema - Prioridad 1):** Morropón, Sechura y Piura (pérdidas $>44\%$, asfixia radicular y déficit crítico de drenes).
-     * **Naranja (Vulnerabilidad Alta - Prioridad 2):** Sullana, Ayabaca y Huancabamba.
+     * **Rojo (Vulnerabilidad Extrema - Prioridad 1):** Morropón, Sechura, Piura y Sullana (pérdidas entre 39.5% y 51.2%, asfixia radicular y déficit crítico de drenes).
+     * **Naranja (Vulnerabilidad Alta - Prioridad 2):** Ayabaca y Huancabamba.
      * **Verde (Vulnerabilidad Moderada - Prioridad 3):** Paita y Talara.
-  6. Exporta el modelo y escaladores a `models/kmeans_provincias.pkl`.
+  6. Exporta a `models/kmeans_provincias.pkl` el escalador, K-Means, PCA, los mapas de riesgo/color y las variables usadas. La app **carga este modelo** y clasifica con él las provincias.
 
 ---
 
@@ -251,12 +251,14 @@ Proyecto_IA/
 │   │   └── noaa_nino12.data                   # TSM NOAA Niño 1+2 (1948–2026)
 │   ├── tabla_maestra_agro_nino.csv            # Serie temporal unificada (474 registros)
 │   ├── provincias_piura_riesgo.csv            # Indicadores de las 8 provincias de Piura
-│   ├── sample_leaves/                         # Muestras foliares (Hoja sana, Tizón, Mancha marrón)
+│   ├── raw/hojas_arroz/                       # Fotos reales de hojas (se descarga; ignorado por git)
+│   ├── sample_leaves/                         # 6 fotos reales del conjunto de prueba para la demo
 │   └── comunicados_enfen/                     # Textos oficiales del ENFEN y SENAMHI
 │
 ├── models/                                    # Modelos serializados listos para inferencia
 │   ├── rf_yield_limon.pkl & arroz.pkl         # Modelos de Predicción Supervisada
 │   ├── ts_precio_limon.pkl & arroz.pkl        # Modelos de Series Temporales con ICEN
+│   ├── vision_hojas_arroz.pkl                 # Clasificador de patologías foliares
 │   └── kmeans_provincias.pkl                  # Modelo K-Means de Vulnerabilidad
 │
 ├── notebooks/                                 # 5 Cuadernos de entrenamiento paso a paso
@@ -270,6 +272,7 @@ Proyecto_IA/
 │   ├── prediction.py                          # Lógica del Módulo 1
 │   ├── timeseries.py                          # Lógica del Módulo 2
 │   ├── vision.py                              # Lógica del Módulo 3
+│   ├── vision_dataset.py                      # Descarga y limpieza de fotos del Módulo 3
 │   ├── clustering.py                          # Lógica del Módulo 4
 │   ├── summarizer.py                          # Lógica del Módulo 5
 │   └── data_generator.py                      # Script que descarga y cruza BCRP/NOAA
@@ -309,6 +312,8 @@ python src/data_generator.py
 python src/prediction.py
 python src/timeseries.py
 python src/clustering.py
+python -m src.vision_dataset   # descarga (~91 MB) y limpia las fotos reales de hojas de arroz
+python -m src.vision           # entrena y exporta models/vision_hojas_arroz.pkl
 ```
 
 ---

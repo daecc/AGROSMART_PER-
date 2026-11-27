@@ -52,6 +52,8 @@ python src/data_generator.py
 python src/prediction.py
 python src/timeseries.py
 python src/clustering.py
+python -m src.vision_dataset   # descarga (~91 MB) y limpia las fotos reales de hojas de arroz
+python -m src.vision           # entrena y exporta models/vision_hojas_arroz.pkl
 ```
 *(Los modelos quedarán automáticamente serializados en la carpeta `models/` y los datos en `data/`).*
 
@@ -109,11 +111,12 @@ La interfaz de **AgroSmart Perú** cuenta con un menú de navegación en la barr
 ---
 
 ### 4. Módulo 3: Diagnóstico Fitosanitario de Hojas (Visión Artificial)
-* **Objetivo:** Clasificar patologías en hojas aceleradas por la humedad y altas temperaturas.
+* **Objetivo:** Clasificar patologías en hojas de arroz aceleradas por la humedad y altas temperaturas.
+* **Alcance:** el modelo fue entrenado con fotografías de hojas de **arroz** (en campo o sobre fondo blanco). No es válido para limón. El tizón bacteriano solo aparece en fotos de campo, así que para esa enfermedad se recomienda fotografiar la planta en el campo.
 * **Pasos para operar:**
   1. Seleccione el método de entrada:
-     - **"Usar Hoja de Muestra de Piura":** Elija entre `hoja_sana.jpg`, `tizon_bacteriano.jpg` o `mancha_marron.jpg`.
-     - **"Subir mi propia foto":** Permite cargar cualquier archivo JPG o PNG capturado con cámara o celular.
+     - **"Usar foto de muestra (conjunto de prueba)":** Elija una de las 6 fotos reales de `data/sample_leaves/` (`hoja_sana_1.jpg`, `tizon_bacteriano_1.jpg`, `mancha_marron_1.jpg`, etc.), que el modelo no vio durante el entrenamiento.
+     - **"Subir mi propia foto":** Permite cargar una foto JPG o PNG del cultivo de arroz tomada con cámara o celular.
   2. De manera instantánea, el sistema desplegará:
      - El diagnóstico patológico identificado con su porcentaje de certeza.
      - El nivel de severidad y descripción del patógeno.
@@ -127,8 +130,8 @@ La interfaz de **AgroSmart Perú** cuenta con un menú de navegación en la barr
 * **Pasos para operar:**
   1. Ingrese a la pestaña de Clustering.
   2. Observe el plano de dispersión PCA con los 3 grupos de riesgo:
-     - **Rojo (Prioridad 1 - Vulnerabilidad Extrema):** Morropón, Sechura y Piura.
-     - **Naranja (Prioridad 2 - Vulnerabilidad Alta):** Sullana, Ayabaca y Huancabamba.
+     - **Rojo (Prioridad 1 - Vulnerabilidad Extrema):** Morropón, Sechura, Piura y Sullana.
+     - **Naranja (Prioridad 2 - Vulnerabilidad Alta):** Ayabaca y Huancabamba.
      - **Verde (Prioridad 3 - Vulnerabilidad Moderada):** Paita y Talara.
   3. Revise la tabla detallada inferior para consultar el cultivo predominante, hectáreas inundables y porcentaje histórico de daño.
 
