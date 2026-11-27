@@ -98,13 +98,14 @@ print("[OK] Gráfico 3: 03_pronostico_series_tiempo.png")
 
 # 4. Muestras de Hojas
 sample_dir = 'data/sample_leaves'
-sample_images = ['hoja_sana.jpg', 'tizon_bacteriano.jpg', 'mancha_marron.jpg']
-fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+# Fotos reales de campo del conjunto de PRUEBA, exportadas por src/vision.py (train_model)
+sample_images = sorted(f for f in os.listdir(sample_dir) if f.lower().endswith(('.jpg', '.jpeg', '.png')))
+fig, axes = plt.subplots(1, len(sample_images), figsize=(3 * len(sample_images), 3.4))
 for idx, img_name in enumerate(sample_images):
     img_path = os.path.join(sample_dir, img_name)
     img = Image.open(img_path)
     axes[idx].imshow(img)
-    axes[idx].set_title(f"Clase: {img_name.replace('.jpg', '').replace('_', ' ').title()}")
+    axes[idx].set_title(img_name.rsplit('_', 1)[0].replace('_', ' ').title())
     axes[idx].axis('off')
 plt.tight_layout()
 plt.savefig(os.path.join(OUT_DIR, '04_muestras_patologias_hojas.png'), dpi=300)

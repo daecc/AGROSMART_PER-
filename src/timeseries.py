@@ -9,11 +9,19 @@ import os
 import joblib
 import numpy as np
 import pandas as pd
+import sklearn
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_percentage_error, mean_squared_error
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
 DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'data', 'tabla_maestra_agro_nino.csv')
+
+# Variables que forecast_future() sabe construir en cada paso del pronóstico
+EXPECTED_FEATURES = [
+    'precio_chacra_soles_kg_lag1', 'precio_chacra_soles_kg_lag2', 'precio_chacra_soles_kg_lag3',
+    'icen_lag1', 'icen_lag2', 'icen_lag3', 'lluvia_lag1', 'lluvia_lag2', 'lluvia_lag3',
+    'mes_sin', 'mes_cos', 'icen', 'anomalia_tsm'
+]
 
 class AgroTimeSeriesForecaster:
     def __init__(self):
@@ -68,24 +76,37 @@ class AgroTimeSeriesForecaster:
             }
             
             metrics[cultivo] = {
-                'mape_pct': round(mape, 2),
-                'rmse_soles': round(rmse, 2)
+                'mape_pct': round(float(mape), 2),
+                'rmse_soles': round(float(rmse), 2)
             }
             
+            self.models[cultivo]['metrics'] = metrics[cultivo]
+            self.models[cultivo]['sklearn_version'] = sklearn.__version__
             out_file = os.path.join(MODEL_DIR, f'ts_precio_{cultivo.lower()}.pkl')
             joblib.dump(self.models[cultivo], out_file)
-            
+
         print("[OK] Modelos de series temporales entrenados con éxito.")
         return metrics
 
-    def forecast_future(self, cultivo='Limon', months_ahead=6, escenario_nino="Fuerte (ICEN +2.2°C)"):
+    def load_model(self, cultivo):
+        """Carga models/ts_precio_<cultivo>.pkl. Si falta, está corrupto o no tiene las
+        variables que espera forecast_future(), reentrena y vuelve a exportar."""
+        if cultivo in self.models:
+            return self.models[cultivo]
         model_file = os.path.join(MODEL_DIR, f'ts_precio_{cultivo.lower()}.pkl')
-        if not os.path.exists(model_file) or cultivo not in self.models:
+        try:
+            pack = joblib.load(model_file)
+            faltantes = set(pack['features']) - set(EXPECTED_FEATURES)
+            if faltantes or not hasattr(pack['model'], 'predict'):
+                raise ValueError(f'variables incompatibles: {sorted(faltantes)}')
+            self.models[cultivo] = pack
+        except Exception as e:
+            print(f"[AVISO] No se pudo cargar {model_file} ({e}). Reentrenando...")
             self.train_models()
-        else:
-            self.models[cultivo] = joblib.load(model_file)
-            
-        saved_pack = self.models[cultivo]
+        return self.models[cultivo]
+
+    def forecast_future(self, cultivo='Limon', months_ahead=6, escenario_nino="Fuerte (ICEN +2.2°C)"):
+        saved_pack = self.load_model(cultivo)
         model = saved_pack['model']
         feat_cols = saved_pack['features']
         
