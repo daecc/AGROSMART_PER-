@@ -1,8 +1,10 @@
 streamlit>=1.35.0
 pandas>=2.0.0
 numpy>=1.24.0
-scikit-learn>=1.3.0
+scikit-learn==1.9.1  # misma versión con la que se exportaron los .pkl de models/
 matplotlib>=3.7.0
 seaborn>=0.12.0
 pillow>=9.5.0
 joblib>=1.3.0
+requests>=2.31.0
+pyarrow>=14.0.0

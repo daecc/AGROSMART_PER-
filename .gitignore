@@ -24,3 +24,10 @@ desktop.ini
 
 # Logs y temporales
 *.log
+
+# Dataset de imágenes de hojas (se descarga con: python -m src.vision_dataset)
+data/raw/hojas_arroz/
+
+# Frontend (Node / Vite)
+node_modules/
+frontend/dist/
